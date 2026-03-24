@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Model Viewer with Animation</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      overflow: hidden;
+      background-color: #333;
+    }
+
+    canvas {
+      display: block;
+    }
+
+    #play-btn, #music-btn {
+      position: absolute;
+      top: 20px;
+      padding: 12px 24px;
+      font-size: 16px;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      z-index: 100;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+      min-width: 120px;
+    }
+
+    #play-btn {
+      left: 20px;
+      background-color: #007bff;
+    }
+
+    #play-btn:hover {
+      background-color: #0056b3;
+    }
+
+    #music-btn {
+      left: 160px;
+      background-color: #28a745;
+    }
+
+    #music-btn:hover {
+      background-color: #1e7e34;
+    }
+  </style>
+</head>
+
+<body>
+  <button id="play-btn">播放动画</button>
+  <button id="music-btn">播放音乐</button>
+  <audio id="bg-music" src="./ConcernedApe - Summer (Nature's Crescendo).flac" preload="auto"></audio>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x333333);
+
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 10000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+    dirLight.position.set(10, 10, 10);
+    scene.add(dirLight);
+
+    let mixer = null;
+    let actions = [];
+    let totalClips = 0;
+    let finishedCount = 0;
+    const clock = new THREE.Clock();
+
+    let playState = 'idle';
+    let musicState = 'idle';
+    const btn = document.getElementById('play-btn');
+    const musicBtn = document.getElementById('music-btn');
+    const bgMusic = document.getElementById('bg-music');
+
+    function setPlayState(state) {
+      playState = state;
+      if (state === 'playing') btn.textContent = '暂停动画';
+      else if (state === 'paused') btn.textContent = '继续播放';
+      else btn.textContent = '播放动画';
+    }
+
+    function setMusicState(state) {
+      musicState = state;
+      if (state === 'playing') musicBtn.textContent = '暂停音乐';
+      else if (state === 'paused') musicBtn.textContent = '继续播放';
+      else musicBtn.textContent = '播放音乐';
+    }
+
+    const loader = new GLTFLoader();
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/');
+    loader.setDRACOLoader(dracoLoader);
+
+    loader.load(
+      './kache1_YaSuo.glb',
+      function (gltf) {
+        const model = gltf.scene;
+        const box = new THREE.Box3().setFromObject(model);
+        const center = box.getCenter(new THREE.Vector3());
+        model.position.sub(center);
+        model.scale.setScalar(2500);
+        model.rotation.y = Math.PI / -5.5;
+        scene.add(model);
+
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z) * 200;
+        const camPos = maxDim * 1.5;
+        camera.position.set(camPos, camPos * 0.8, camPos);
+        camera.near = maxDim * 0.001;
+        camera.far = maxDim * 20;
+        camera.updateProjectionMatrix();
+        controls.target.set(0, 0, 0);
+        controls.update();
+
+        if (gltf.animations && gltf.animations.length) {
+          totalClips = gltf.animations.length;
+          mixer = new THREE.AnimationMixer(model);
+
+          gltf.animations.forEach((clip) => {
+            const action = mixer.clipAction(clip);
+            action.loop = THREE.LoopOnce;
+            action.clampWhenFinished = true;
+            actions.push(action);
+          });
+
+          mixer.addEventListener('finished', () => {
+            finishedCount++;
+            if (finishedCount >= totalClips) {
+              finishedCount = 0;
+              setPlayState('idle');
+            }
+          });
+
+        } else {
+          console.warn('该模型文件内没有检测到动画数据');
+        }
+      },
+      undefined,
+      (error) => console.error('加载出错:', error)
+    );
+
+    btn.addEventListener('click', () => {
+      if (!mixer || actions.length === 0) {
+        alert('模型尚未加载完成或没有动画');
+        return;
+      }
+
+      if (playState === 'playing') {
+        mixer.timeScale = 0;
+        setPlayState('paused');
+      } else if (playState === 'paused') {
+        mixer.timeScale = 1;
+        setPlayState('playing');
+      } else {
+        finishedCount = 0;
+        mixer.timeScale = 1;
+        actions.forEach(action => action.reset().play());
+        setPlayState('playing');
+      }
+    });
+
+    musicBtn.addEventListener('click', () => {
+      if (musicState === 'playing') {
+        bgMusic.pause();
+        setMusicState('paused');
+      } else if (musicState === 'paused') {
+        bgMusic.play();
+        setMusicState('playing');
+      } else {
+        bgMusic.currentTime = 0;
+        bgMusic.play();
+        setMusicState('playing');
+      }
+    });
+
+    bgMusic.addEventListener('ended', () => {
+      setMusicState('idle');
+    });
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = clock.getDelta();
+      if (mixer) mixer.update(delta);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+
+</html>

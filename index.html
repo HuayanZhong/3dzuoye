@@ -123,7 +123,7 @@
     loader.setDRACOLoader(dracoLoader);
 
     loader.load(
-      '/kache1_YaSuo.glb',
+      './kache1_YaSuo.glb',
       function (gltf) {
         const model = gltf.scene;
         const box = new THREE.Box3().setFromObject(model);

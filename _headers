@@ -1,0 +1,8 @@
+/*.glb
+  Content-Type: model/gltf-binary
+
+/*.flac
+  Content-Type: audio/flac
+
+/*
+  Access-Control-Allow-Origin: *
